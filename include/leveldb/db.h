@@ -22,6 +22,9 @@ struct ReadOptions;
 struct WriteOptions;
 class WriteBatch;
 
+// 快照是DB某个时间特定状态的句柄
+// 快照是不可变的对象,因此可以安全的从多个线程访问,无需任何外部同步
+
 // Abstract handle to particular state of a DB.
 // A Snapshot is an immutable object and can therefore be safely
 // accessed from multiple threads without any external synchronization.
@@ -39,11 +42,19 @@ struct LEVELDB_EXPORT Range {
   Range(const Slice& s, const Slice& l) : start(s), limit(l) { }
 };
 
+// DB是从键到值的持续有序映射
+// 在没有任何外部同步的情况下,DB可以安全地从多个线程并发访问
+
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
 // any external synchronization.
 class LEVELDB_EXPORT DB {
  public:
+  //用指定的name打开数据库。
+  //在*dbptr中存储指向堆分配数据库的指针，并在成功时返回OK。
+  //在*dbptr中存储NULL，并在出错时返回non-Ok状态。
+  //调用者应该在不再需要时删除*dbptr。 
+  
   // Open the database with the specified "name".
   // Stores a pointer to a heap-allocated database in *dbptr and returns
   // OK on success.
@@ -55,11 +66,14 @@ class LEVELDB_EXPORT DB {
 
   DB() = default;
 
-  DB(const DB&) = delete;
+  DB(const DB&) = delete; //c++ 11 禁用特殊的成员函数加上= delete;
   DB& operator=(const DB&) = delete;
 
   virtual ~DB();
 
+  //设置key的数据库条目值为value,成功时返回Ok,出错时返回non-OK
+  //注意：考虑设置options.sync = true。
+  
   // Set the database entry for "key" to "value".  Returns OK on success,
   // and a non-OK status on error.
   // Note: consider setting options.sync = true.
@@ -67,6 +81,10 @@ class LEVELDB_EXPORT DB {
                      const Slice& key,
                      const Slice& value) = 0;
 
+  // 删除数据库条目(如果有的话),成功时返回OK,出错时返回non-OK
+  // 如果数据库不存在key,它不是一个错误
+  //注意：考虑设置options.sync = true。
+  
   // Remove the database entry (if any) for "key".  Returns OK on
   // success, and a non-OK status on error.  It is not an error if "key"
   // did not exist in the database.
@@ -78,6 +96,10 @@ class LEVELDB_EXPORT DB {
   // Note: consider setting options.sync = true.
   virtual Status Write(const WriteOptions& options, WriteBatch* updates) = 0;
 
+
+  // 如果数据库包含key的条目，则将相应的值存储在*value中并返回OK。
+  // 如果数据库不包含key的条目,*value的值保持不变,返回Status::IsNotFound
+  //
   // If the database contains an entry for "key" store the
   // corresponding value in *value and return OK.
   //
@@ -88,6 +110,12 @@ class LEVELDB_EXPORT DB {
   virtual Status Get(const ReadOptions& options,
                      const Slice& key, std::string* value) = 0;
 
+  // 在数据库的内容上返回一个堆上分配的迭代器
+  // NewIterator()的结果刚开始是不可用的(调用者必须使用前在迭代器上调用Seek方法)
+  // 
+  // 在迭代器不再使用时，调用者应该删除迭代器
+  // 迭代器应该在db删除之前删除
+  //
   // Return a heap-allocated iterator over the contents of the database.
   // The result of NewIterator() is initially invalid (caller must
   // call one of the Seek methods on the iterator before using it).
@@ -96,16 +124,24 @@ class LEVELDB_EXPORT DB {
   // The returned iterator should be deleted before this db is deleted.
   virtual Iterator* NewIterator(const ReadOptions& options) = 0;
 
+  //返回当前DB状态的句柄。 
+  //使用此句柄创建的迭代器都将观察当前DB状态的稳定快照。
+  //当快照不再需要时,调用者必须调用ReleaseSnapshot(result)。
+  //
   // Return a handle to the current DB state.  Iterators created with
   // this handle will all observe a stable snapshot of the current DB
   // state.  The caller must call ReleaseSnapshot(result) when the
   // snapshot is no longer needed.
   virtual const Snapshot* GetSnapshot() = 0;
 
+  // 释放之前的快照,调用者在调用此函数后一定不能再使用快照
   // Release a previously acquired snapshot.  The caller must not
   // use "snapshot" after this call.
   virtual void ReleaseSnapshot(const Snapshot* snapshot) = 0;
 
+  // DB通过这个方法实现了导出状态的属性,如果属性是该数据库实现的有效属性,
+  // 用当前值填充*value返回true,否则返回false
+  //
   // DB implementations can export properties about their state
   // via this method.  If "property" is a valid property understood by this
   // DB implementation, fills "*value" with its current value and returns
@@ -134,6 +170,10 @@ class LEVELDB_EXPORT DB {
   // The results may not include the sizes of recently written data.
   virtual void GetApproximateSizes(const Range* range, int n,
                                    uint64_t* sizes) = 0;
+
+  //压缩密钥范围的基础存储(*开始,*结束)。
+  //特别是删除和覆盖的版本被丢弃，并重新排列数据，以减少访问数据所需的操作成本。
+  //这种操作通常只由理解底层实现的用户调用。
 
   // Compact the underlying storage for the key range [*begin,*end].
   // In particular, deleted and overwritten versions are discarded,
