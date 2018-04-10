@@ -38,6 +38,11 @@ class LEVELDB_EXPORT Env {
 
   virtual ~Env();
 
+  // 返回适合当前操作系统的默认环境。
+  // 复杂的用户可能希望提供自己的Env实现,
+  // 而不是依赖于这个默认环境。
+  // Default()的结果属于leveldb,不能删除。
+  //
   // Return a default environment suitable for the current operating
   // system.  Sophisticated users may wish to provide their own Env
   // implementation instead of relying on this default environment.
@@ -45,16 +50,30 @@ class LEVELDB_EXPORT Env {
   // The result of Default() belongs to leveldb and must never be deleted.
   static Env* Default();
 
+  // 创建一个具有指定名称的全新序列可读文件。
+  // 在成功时，在*result中存储一个指向新文件的指针并返回OK。
+  // 在失败中，在*result中存储NULL并返回非ok。
+  // 如果文件不存在，返回一个不确定的状态。
+  // 当文件不存在时，实现应该返回一个NotFound状态。
+  //
   // Create a brand new sequentially-readable file with the specified name.
   // On success, stores a pointer to the new file in *result and returns OK.
   // On failure stores NULL in *result and returns non-OK.  If the file does
   // not exist, returns a non-OK status.  Implementations should return a
   // NotFound status when the file does not exist.
   //
+  // 返回的文件一次只能被一个线程访问。
+  //
   // The returned file will only be accessed by one thread at a time.
   virtual Status NewSequentialFile(const std::string& fname,
                                    SequentialFile** result) = 0;
 
+  // 创建一个带有指定名称的全新随机访问只读文件。
+  // 在成功时，在*result中存储一个指向新文件的指针并返回OK。
+  // 在失败中，在*result中存储NULL并返回非ok。
+  // 如果文件不存在，返回一个不确定的状态。
+  // 当文件不存在时，实现应该返回一个NotFound状态。
+  //
   // Create a brand new random access read-only file with the
   // specified name.  On success, stores a pointer to the new file in
   // *result and returns OK.  On failure stores NULL in *result and
@@ -62,27 +81,46 @@ class LEVELDB_EXPORT Env {
   // status.  Implementations should return a NotFound status when the file does
   // not exist.
   //
+  // 返回的文件可以同时被多个线程访问。
+  //
   // The returned file may be concurrently accessed by multiple threads.
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      RandomAccessFile** result) = 0;
 
+  // 创建一个对象，该对象使用指定的名称写入到新文件。
+  // 删除具有相同名称的现有文件并创建一个新文件。
+  // 在成功时,在*result中存储一个指向新文件的指针并返回OK。
+  // 在失败中,在*result中存储NULL并返回非ok。
+  //
   // Create an object that writes to a new file with the specified
   // name.  Deletes any existing file with the same name and creates a
   // new file.  On success, stores a pointer to the new file in
   // *result and returns OK.  On failure stores NULL in *result and
   // returns non-OK.
   //
+  // 返回的文件一次只能被一个线程访问。
+  //
   // The returned file will only be accessed by one thread at a time.
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) = 0;
 
+  // 创建一个对象，该对象可以附加到现有文件，
+  // 或者写入到新文件(如果文件不存在的话)。
+  // 在成功时，在*result中存储一个指向新文件的指针并返回OK。
+  // 在失败时，在*result中存储NULL并返回非ok。
+  //
   // Create an object that either appends to an existing file, or
   // writes to a new file (if the file does not exist to begin with).
   // On success, stores a pointer to the new file in *result and
   // returns OK.  On failure stores NULL in *result and returns
   // non-OK.
   //
+  // 返回的文件一次只能被一个线程访问。
   // The returned file will only be accessed by one thread at a time.
+  //
+  // 如果该Env不允许附加到现有文件，
+  // 则可能返回一个IsNotSupportedError错误。
+  // Env的用户(包括leveldb实现)必须准备好处理不支持附加的Env。
   //
   // May return an IsNotSupportedError error if this Env does
   // not allow appending to an existing file.  Users of Env (including
@@ -94,6 +132,9 @@ class LEVELDB_EXPORT Env {
   // Returns true iff the named file exists.
   virtual bool FileExists(const std::string& fname) = 0;
 
+  // 在*result中存储指定目录的子名。
+  // 名称与"dir"相关。*result的原始内容被删除。
+  //
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
   // Original contents of *results are dropped.
@@ -168,6 +209,7 @@ class LEVELDB_EXPORT Env {
   virtual void SleepForMicroseconds(int micros) = 0;
 };
 
+// 通过文件顺序读取的文件抽象。
 // A file abstraction for reading sequentially through a file
 class LEVELDB_EXPORT SequentialFile {
  public:
@@ -278,7 +320,9 @@ LEVELDB_EXPORT Status WriteStringToFile(Env* env, const Slice& data,
 // A utility routine: read contents of named file into *data
 LEVELDB_EXPORT Status ReadFileToString(Env* env, const std::string& fname,
                                        std::string* data);
-
+// Env的实现,将所有的调用转发给另一个Env。
+// 对于那些希望重写另一个Env的部分功能的客户来说，可能是有用的。
+//
 // An implementation of Env that forwards all calls to another Env.
 // May be useful to clients who wish to override just part of the
 // functionality of another Env.
