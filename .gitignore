@@ -8,3 +8,4 @@ build_config.mk
 db_bench
 leveldbutil
 tags
+build
